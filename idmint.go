@@ -197,12 +197,6 @@ type Configurer interface {
 	configure(m *Minter)
 }
 
-type WorkerIDIsZeroError struct{}
-
-func (e WorkerIDIsZeroError) Error() string {
-	return "worker id is zero"
-}
-
 type WorkerIDTooLargeError struct {
 	workerID uint64
 }
@@ -213,10 +207,6 @@ func (e WorkerIDTooLargeError) Error() string {
 }
 
 func NewMinter(workerID uint64, configurers ...Configurer) (*Minter, error) {
-	if workerID == 0 {
-		return nil, &WorkerIDIsZeroError{}
-	}
-
 	if workerID > maxWorkerID {
 		return nil, &WorkerIDTooLargeError{workerID: workerID}
 	}
@@ -231,17 +221,7 @@ func NewMinter(workerID uint64, configurers ...Configurer) (*Minter, error) {
 	return minter, nil
 }
 
-type MinterCreatedIncorrectlyError struct{}
-
-func (e MinterCreatedIncorrectlyError) Error() string {
-	return "minter was not created using idmint.NewMinter"
-}
-
 func (m *Minter) Mint(kind string) (ID, error) {
-	if m.workerID == 0 {
-		return ID{}, &MinterCreatedIncorrectlyError{}
-	}
-
 	m.once.Do(m.initialise)
 
 	now := m.timer.Time()
@@ -391,7 +371,7 @@ func (m *Minter) initialise() {
 	if m.startOfTime.IsZero() {
 		m.startOfTime = defaultStartOfTime
 	}
-	m.startOfTime = m.startOfTime.Truncate(time.Second)
+	m.startOfTime = m.startOfTime.Truncate(time.Millisecond)
 	m.endOfTime = m.startOfTime.Add(maxTimestamp * time.Millisecond)
 
 	if m.timer == nil {
