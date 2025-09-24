@@ -464,6 +464,8 @@ func WithEncoder(encoder Encoder) Configurer {
 
 type noOpEncoder struct{}
 
+var _ Encoder = (*noOpEncoder)(nil)
+
 func (e noOpEncoder) Encode(s string) (string, error) {
 	return s, nil
 }
