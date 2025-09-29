@@ -2,7 +2,7 @@
 
 ## Overview
 
-`idmint` is a Go module for minting unique, time-sortable IDs in a distributed system without coordination between 
+`idmint` is a Go module for minting unique, time-sortable, IDs in a distributed system without coordination between 
 nodes. It is fully compatible with the [encoding/json](https://pkg.go.dev/encoding/json) package within the Go standard 
 library, implementing the `json.Marshaler` and `json.Unmarshaler` interfaces for seamless integration into APIs.
 
@@ -76,10 +76,10 @@ if err != nil {
     // handle error
 }
 
-fmt.Println(id) // e.g. "user_15099494400000"
+fmt.Println(id) // e.g. "user:15099494400000"
 ```
 
-> Specifying the kind of ID we are minting provides a human-readable way understand what kind of 'resource' an ID 
+> Specifying the kind of ID we are minting provides a human-readable way to understand what kind of 'resource' an ID 
 > is associated with.
 
 ## Documentation

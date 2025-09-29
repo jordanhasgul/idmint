@@ -479,8 +479,8 @@ func TestMinter_Mint(t *testing.T) {
 		id, err := minter.Mint("user")
 		assert.Error(t, err)
 
-		var bsote *idmint.CurrentTimeBeforeStartOfTimeError
-		assert.ErrorAs(t, err, &bsote)
+		var bsomte *idmint.CurrentTimeBeforeStartOfMintingTimeError
+		assert.ErrorAs(t, err, &bsomte)
 		assert.Zero(t, id)
 	})
 
@@ -504,8 +504,8 @@ func TestMinter_Mint(t *testing.T) {
 		id, err := minter.Mint("user")
 		assert.Error(t, err)
 
-		var aeote *idmint.CurrentTimeAfterEndOfTimeError
-		assert.ErrorAs(t, err, &aeote)
+		var aeomte *idmint.CurrentTimeAfterEndOfMintingTimeError
+		assert.ErrorAs(t, err, &aeomte)
 		assert.Zero(t, id)
 	})
 

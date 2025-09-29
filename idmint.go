@@ -1,3 +1,5 @@
+// Package idmint is a Go module for minting unique, time-sortable IDs in
+// a distributed system without coordination between nodes.
 package idmint
 
 import (
@@ -9,11 +11,14 @@ import (
 	"time"
 )
 
+// ID represents an immutable identifier for a kind of 'resource'.
 type ID struct {
 	kind  string
 	value string
 }
 
+// NewID returns a new ID from a kind and a value. However, if the kind or
+// the value is invalid (as specified by ID.Valid), an error is returned.
 func NewID(kind, value string) (ID, error) {
 	id := ID{
 		kind:  kind,
@@ -27,6 +32,7 @@ func NewID(kind, value string) (ID, error) {
 	return id, nil
 }
 
+// MustNewID is like NewID but panics if creation fails.
 func MustNewID(kind, value string) ID {
 	id, err := NewID(kind, value)
 	if err != nil {
@@ -37,6 +43,24 @@ func MustNewID(kind, value string) ID {
 	return id
 }
 
+// InvalidIDFormatError indicates that a string to be parsed as an ID is not
+// of the format "<kind>_<value>".
+type InvalidIDFormatError struct {
+	idAsString string
+}
+
+func (e InvalidIDFormatError) Error() string {
+	errorString := "want id to have format '<kind>_<value>' but got '%s'"
+	return fmt.Sprintf(errorString, e.idAsString)
+}
+
+func (e InvalidIDFormatError) ID() string {
+	return e.idAsString
+}
+
+// ParseID parses a string of the format "<kind>_<value>" into an ID. However,
+// if the string format is invalid or the kind or the value is invalid (as
+// specified by ID.Valid), an error is returned.
 func ParseID(idAsString string) (ID, error) {
 	kind, value, found := strings.Cut(idAsString, "_")
 	if !found {
@@ -51,6 +75,7 @@ func ParseID(idAsString string) (ID, error) {
 	return id, nil
 }
 
+// MustParseID is like ParseID but panics if parsing fails.
 func MustParseID(idAsString string) ID {
 	id, err := ParseID(idAsString)
 	if err != nil {
@@ -61,38 +86,46 @@ func MustParseID(idAsString string) ID {
 	return id
 }
 
+// Kind returns the kind part of the ID.
 func (id ID) Kind() string {
 	return id.kind
 }
 
+// Value returns the value part of the ID.
 func (id ID) Value() string {
 	return id.value
 }
 
+// IDKindEmptyError indicates an ID's kind was empty.
 type IDKindEmptyError struct{}
 
 func (e IDKindEmptyError) Error() string {
 	return "id kind is empty"
 }
 
+// IDKindContainsUnderscoresError indicates an ID's kind contains underscores.
 type IDKindContainsUnderscoresError struct{}
 
 func (e IDKindContainsUnderscoresError) Error() string {
 	return "id kind contains underscores"
 }
 
+// IDValueEmptyError indicates an ID's value was empty.
 type IDValueEmptyError struct{}
 
 func (e IDValueEmptyError) Error() string {
 	return "id value is empty"
 }
 
+// IDValueContainsUnderscoresError indicates an ID's value contains underscores.
 type IDValueContainsUnderscoresError struct{}
 
 func (e IDValueContainsUnderscoresError) Error() string {
 	return "id value contains underscores"
 }
 
+// Valid returns an error if the ID's kind or the ID's value was empty or
+// contains underscores.
 func (id ID) Valid() error {
 	if id.Kind() == "" {
 		return &IDKindEmptyError{}
@@ -115,8 +148,10 @@ func (id ID) Valid() error {
 
 var _ fmt.Stringer = (*ID)(nil)
 
-const invalidIDString = "idmint.InvalidID"
+const invalidIDString = "InvalidID"
 
+// String returns the string representation of the ID in the format
+// "<kind>_<value>". However, if the ID is invalid, it returns "InvalidID".
 func (id ID) String() string {
 	err := id.Valid()
 	if err != nil {
@@ -126,6 +161,8 @@ func (id ID) String() string {
 	return id.Kind() + "_" + id.Value()
 }
 
+// Equal returns a boolean denoting whether two IDs are equal by comparing
+// their kinds and values.
 func (id ID) Equal(jd ID) bool {
 	return id.Kind() == jd.Kind() &&
 		id.Value() == jd.Value()
@@ -133,6 +170,9 @@ func (id ID) Equal(jd ID) bool {
 
 var _ json.Marshaler = (*ID)(nil)
 
+// MarshalJSON implements the [encoding/json.Marshaler] interface. It marshals
+// the ID into a JSON string in the format "<kind>_<value>". However, an
+// error is returned if the ID is invalid.
 func (id ID) MarshalJSON() ([]byte, error) {
 	err := id.Valid()
 	if err != nil {
@@ -143,21 +183,11 @@ func (id ID) MarshalJSON() ([]byte, error) {
 	return idAsJSON, nil
 }
 
-type InvalidIDFormatError struct {
-	idAsString string
-}
-
-func (e InvalidIDFormatError) Error() string {
-	errorString := "want id to have format '<kind>_<value>' but got '%s'"
-	return fmt.Sprintf(errorString, e.idAsString)
-}
-
-func (e InvalidIDFormatError) ID() string {
-	return e.idAsString
-}
-
 var _ json.Unmarshaler = (*ID)(nil)
 
+// UnmarshalJSON implements the [encoding/json.Unmarshaler] interface. It
+// unmarshals a JSON string of the format "<kind>_<value>" in to an ID. However,
+// an error is returned if the ID is invalid.
 func (id *ID) UnmarshalJSON(idAsJson []byte) error {
 	var idAsString string
 
@@ -176,14 +206,24 @@ func (id *ID) UnmarshalJSON(idAsJson []byte) error {
 	return nil
 }
 
+// Minter mints unique, time-sortable, IDs whose 64-bit value is composed of:
+//
+//   - 42 bits representing the time, in milliseconds since the epoch, when
+//     the ID was minted.
+//   - 10 bits that uniquely the worker that minted the ID.
+//   - 12 bits the number of the ID in the sequence of IDs minted that
+//     millisecond.
+//
+// This us to have 1024 workers each minting 4096 IDs per millisecond. It is
+// safe for concurrent use.
 type Minter struct {
 	once sync.Once
 
 	workerID uint64
 
-	timer       Timer
-	startOfTime time.Time
-	endOfTime   time.Time
+	timer              Timer
+	startOfMintingTime time.Time
+	endOfMintingTime   time.Time
 
 	lock sync.Mutex
 
@@ -193,10 +233,13 @@ type Minter struct {
 	encoder Encoder
 }
 
+// Configurer configures the behaviour of a Minter.
 type Configurer interface {
 	configure(m *Minter)
 }
 
+// WorkerIDTooLargeError indicates that the worker identifier was larger
+// than 1024.
 type WorkerIDTooLargeError struct {
 	workerID uint64
 }
@@ -206,6 +249,9 @@ func (e WorkerIDTooLargeError) Error() string {
 	return fmt.Sprintf(errorString, e.workerID, maxWorkerID)
 }
 
+// NewMinter returns a new Minter, with the specified worker identifier
+// (between 0 and 1023), that has been configured by applying the supplied
+// Configurer's.
 func NewMinter(workerID uint64, configurers ...Configurer) (*Minter, error) {
 	if workerID > maxWorkerID {
 		return nil, &WorkerIDTooLargeError{workerID: workerID}
@@ -221,13 +267,20 @@ func NewMinter(workerID uint64, configurers ...Configurer) (*Minter, error) {
 	return minter, nil
 }
 
+// Mint returns a unique, time-sortable, ID for a kind of 'resource'. However,
+// it returns an error if:
+//
+//  - The current time is before the start of minting time or after the end of
+//    minting time, where the end of minting time = start of minting time + 2^42 - 1 millseconds.
+//  - The current time has moved backwards since the last ID was minted.
+//  - The minter has minted more than 4096 IDs in the current millisecond.
 func (m *Minter) Mint(kind string) (ID, error) {
 	m.once.Do(m.initialise)
 
 	now := m.timer.Time()
 	sequenceNumber, err := m.canMint(now)
 	if err != nil {
-		return ID{}, fmt.Errorf("checking if we can mint: %w", err)
+		return ID{}, fmt.Errorf("attempting to mint: %w", err)
 	}
 
 	rawValue := m.doMint(now, sequenceNumber)
@@ -248,36 +301,40 @@ func (m *Minter) Mint(kind string) (ID, error) {
 	return id, nil
 }
 
-type CurrentTimeBeforeStartOfTimeError struct {
-	currentTime time.Time
-	startOfTime time.Time
+// CurrentTimeBeforeStartOfMintingTimeError indicates that the current time is before the start of minting time.
+type CurrentTimeBeforeStartOfMintingTimeError struct {
+	currentTime        time.Time
+	startOfMintingTime time.Time
 }
 
-func (e CurrentTimeBeforeStartOfTimeError) Error() string {
+func (e CurrentTimeBeforeStartOfMintingTimeError) Error() string {
 	var (
-		currentTimeAsString = e.currentTime.Format(time.RFC3339)
-		startOfTimeAsString = e.startOfTime.Format(time.RFC3339)
+		currentTimeAsString        = e.currentTime.Format(time.RFC3339)
+		startOfMintingTimeAsString = e.startOfMintingTime.Format(time.RFC3339)
 
-		errorStr = "current time '%s' is before start of time '%s'"
+		errorStr = "current time '%s' is before start of minting time '%s'"
 	)
-	return fmt.Sprintf(errorStr, currentTimeAsString, startOfTimeAsString)
+	return fmt.Sprintf(errorStr, currentTimeAsString, startOfMintingTimeAsString)
 }
 
-type CurrentTimeAfterEndOfTimeError struct {
-	currentTime time.Time
-	endOfTime   time.Time
+// CurrentTimeAfterEndOfMintingTimeError indicates that the current time is after the end of minting time.
+type CurrentTimeAfterEndOfMintingTimeError struct {
+	currentTime      time.Time
+	endOfMintingTime time.Time
 }
 
-func (e CurrentTimeAfterEndOfTimeError) Error() string {
+func (e CurrentTimeAfterEndOfMintingTimeError) Error() string {
 	var (
-		currentTimeAsString = e.currentTime.Format(time.RFC3339)
-		endOfTimeAsString   = e.endOfTime.Format(time.RFC3339)
+		currentTimeAsString      = e.currentTime.Format(time.RFC3339)
+		endOfMintingTimeAsString = e.endOfMintingTime.Format(time.RFC3339)
 
-		errorString = "current time '%s' is after end of time '%s'"
+		errorString = "current time '%s' is after end of minting time '%s'"
 	)
-	return fmt.Sprintf(errorString, currentTimeAsString, endOfTimeAsString)
+	return fmt.Sprintf(errorString, currentTimeAsString, endOfMintingTimeAsString)
 }
 
+// TimeMovedBackwardsError indicates that the time has moved backwards since
+// the last ID was minted.
 type TimeMovedBackwardsError struct {
 	durationMovedBackwards time.Duration
 }
@@ -290,6 +347,8 @@ func (e TimeMovedBackwardsError) Error() string {
 	return "time moved backwards by " + e.durationMovedBackwards.String()
 }
 
+// SequenceNumberTooLargeError indicates that a Minter has minted more than
+// 4096 IDs in the same millisecond.
 type SequenceNumberTooLargeError struct{}
 
 func (e SequenceNumberTooLargeError) Error() string {
@@ -297,17 +356,17 @@ func (e SequenceNumberTooLargeError) Error() string {
 }
 
 func (m *Minter) canMint(now time.Time) (uint64, error) {
-	if now.Before(m.startOfTime) {
-		return 0, &CurrentTimeBeforeStartOfTimeError{
-			currentTime: now,
-			startOfTime: m.startOfTime,
+	if now.Before(m.startOfMintingTime) {
+		return 0, &CurrentTimeBeforeStartOfMintingTimeError{
+			currentTime:        now,
+			startOfMintingTime: m.startOfMintingTime,
 		}
 	}
 
-	if now.After(m.endOfTime) {
-		return 0, &CurrentTimeAfterEndOfTimeError{
-			currentTime: now,
-			endOfTime:   m.endOfTime,
+	if now.After(m.endOfMintingTime) {
+		return 0, &CurrentTimeAfterEndOfMintingTimeError{
+			currentTime:      now,
+			endOfMintingTime: m.endOfMintingTime,
 		}
 	}
 
@@ -353,7 +412,7 @@ const (
 func (m *Minter) doMint(now time.Time, sequenceNumber uint64) uint64 {
 	var rawValue uint64
 
-	rawValue |= uint64(now.Sub(m.startOfTime).
+	rawValue |= uint64(now.Sub(m.startOfMintingTime).
 		Milliseconds())
 
 	rawValue <<= numBitsForWorkerID
@@ -368,11 +427,11 @@ func (m *Minter) doMint(now time.Time, sequenceNumber uint64) uint64 {
 var defaultStartOfTime = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 
 func (m *Minter) initialise() {
-	if m.startOfTime.IsZero() {
-		m.startOfTime = defaultStartOfTime
+	if m.startOfMintingTime.IsZero() {
+		m.startOfMintingTime = defaultStartOfTime
 	}
-	m.startOfTime = m.startOfTime.Truncate(time.Millisecond)
-	m.endOfTime = m.startOfTime.Add(maxTimestamp * time.Millisecond)
+	m.startOfMintingTime = m.startOfMintingTime.Truncate(time.Millisecond)
+	m.endOfMintingTime = m.startOfMintingTime.Add(maxTimestamp * time.Millisecond)
 
 	if m.timer == nil {
 		m.timer = stdTimer{}
@@ -389,13 +448,15 @@ func (m *Minter) initialise() {
 	}
 }
 
+// Timer retrieves the current time.
 type Timer interface {
 	Time() time.Time
 }
 
-type TimeFunc func() time.Time
+// TimerFunc is an adapter that allows us to use ordinary functions as a Timer.
+type TimerFunc func() time.Time
 
-func (f TimeFunc) Time() time.Time {
+func (f TimerFunc) Time() time.Time {
 	return f()
 }
 
@@ -407,6 +468,7 @@ func (c *withTimerConfigurer) configure(m *Minter) {
 	m.timer = c.timer
 }
 
+// WithTimer returns a Configurer that sets a custom Timer on a Minter.
 func WithTimer(timer Timer) Configurer {
 	return &withTimerConfigurer{timer: timer}
 }
@@ -433,17 +495,21 @@ type withEpochConfigurer struct {
 }
 
 func (c *withEpochConfigurer) configure(m *Minter) {
-	m.startOfTime = c.epoch
+	m.startOfMintingTime = c.epoch
 }
 
+// WithEpoch returns a Configurer that sets a custom epoch on a Minter.
 func WithEpoch(epoch time.Time) Configurer {
 	return &withEpochConfigurer{epoch: epoch}
 }
 
+// Encoder encodes the string representation of the raw 64-bit value of the ID
+// before it is used.
 type Encoder interface {
 	Encode(s string) (string, error)
 }
 
+// EncoderFunc is an adapter that allows us to use ordinary functions as an Encoder.
 type EncoderFunc func(s string) (string, error)
 
 func (f EncoderFunc) Encode(s string) (string, error) {
@@ -458,6 +524,7 @@ func (c *withEncoderConfigurer) configure(m *Minter) {
 	m.encoder = c.encoder
 }
 
+// WithEncoder returns a Configurer that sets a custom Encoder on a Minter.
 func WithEncoder(encoder Encoder) Configurer {
 	return &withEncoderConfigurer{encoder: encoder}
 }
