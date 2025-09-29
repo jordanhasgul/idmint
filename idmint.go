@@ -239,7 +239,7 @@ type Configurer interface {
 }
 
 // WorkerIDTooLargeError indicates that the worker identifier was larger
-// than 1024.
+// than 1023.
 type WorkerIDTooLargeError struct {
 	workerID uint64
 }
@@ -250,8 +250,8 @@ func (e WorkerIDTooLargeError) Error() string {
 }
 
 // NewMinter returns a new Minter, with the specified worker identifier
-// (between 0 and 1023), that has been configured by applying the supplied
-// Configurer's.
+// (between 0 and 1023 inclusive), that has been configured by applying
+// the supplied Configurer's.
 func NewMinter(workerID uint64, configurers ...Configurer) (*Minter, error) {
 	if workerID > maxWorkerID {
 		return nil, &WorkerIDTooLargeError{workerID: workerID}
