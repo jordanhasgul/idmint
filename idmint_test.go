@@ -46,12 +46,12 @@ func TestNewID(t *testing.T) {
 			expectedError: &idmint.IDKindEmptyError{},
 		},
 		{
-			name: "kind with underscores",
+			name: "kind with colons",
 
-			kind:  "user_profile",
+			kind:  "user:profile",
 			value: "12345",
 
-			expectedError: &idmint.IDKindContainsUnderscoresError{},
+			expectedError: &idmint.IDKindContainsColonsError{},
 		},
 		{
 			name: "empty value",
@@ -62,12 +62,12 @@ func TestNewID(t *testing.T) {
 			expectedError: &idmint.IDValueEmptyError{},
 		},
 		{
-			name: "value with underscores",
+			name: "value with colons",
 
 			kind:  "user",
-			value: "value_with_underscore",
+			value: "value:with:underscore",
 
-			expectedError: &idmint.IDValueContainsUnderscoresError{},
+			expectedError: &idmint.IDValueContainsColonsError{},
 		},
 	}
 	for _, testCase := range testCases {
@@ -89,7 +89,7 @@ func TestParseID(t *testing.T) {
 
 		idKind := "user"
 		idValue := "12345"
-		idAsString := idKind + "_" + idValue
+		idAsString := idKind + ":" + idValue
 
 		id, err := idmint.ParseID(idAsString)
 		require.NoError(t, err)
@@ -123,23 +123,23 @@ func TestParseID(t *testing.T) {
 		{
 			name: "fails on empty kind part",
 
-			idAsString: "_12345",
+			idAsString: ":12345",
 
 			expectedError: &idmint.IDKindEmptyError{},
 		},
 		{
 			name: "fails on empty value part",
 
-			idAsString: "user_",
+			idAsString: "user:",
 
 			expectedError: &idmint.IDValueEmptyError{},
 		},
 		{
 			name: "fails on value with extra underscores",
 
-			idAsString: "user_value_with_underscores",
+			idAsString: "user:value:with:underscores",
 
-			expectedError: &idmint.IDValueContainsUnderscoresError{},
+			expectedError: &idmint.IDValueContainsColonsError{},
 		},
 	}
 	for _, testCase := range testCases {
@@ -165,7 +165,7 @@ func TestID_String(t *testing.T) {
 		id, err := idmint.NewID(idKind, idValue)
 		require.NoError(t, err)
 
-		idAsString := id.Kind() + "_" + idValue
+		idAsString := id.Kind() + ":" + idValue
 		assert.Equal(t, idAsString, id.String())
 	})
 
@@ -173,7 +173,7 @@ func TestID_String(t *testing.T) {
 		t.Parallel()
 
 		var id idmint.ID
-		assert.Equal(t, "idmint.InvalidID", id.String())
+		assert.Equal(t, "InvalidID", id.String())
 	})
 }
 
@@ -247,7 +247,7 @@ func TestID_MarshalJSON(t *testing.T) {
 
 		idKind := "user"
 		idValue := "12345"
-		idAsString := idKind + "_" + idValue
+		idAsString := idKind + ":" + idValue
 
 		id, err := idmint.NewID(idKind, idValue)
 		require.NoError(t, err)
@@ -275,7 +275,7 @@ func TestID_UnmarshalJSON(t *testing.T) {
 
 		idKind := "user"
 		idValue := "12345"
-		idAsJSON := `"` + idKind + "_" + idValue + `"`
+		idAsJSON := `"` + idKind + ":" + idValue + `"`
 
 		var id idmint.ID
 		err := json.Unmarshal([]byte(idAsJSON), &id)
@@ -296,7 +296,7 @@ func TestID_UnmarshalJSON(t *testing.T) {
 		{
 			name: "non-string type json value",
 
-			idAsJSON: `user_12345`,
+			idAsJSON: `user:12345`,
 
 			expectedError: &json.UnmarshalTypeError{},
 		},
@@ -310,23 +310,23 @@ func TestID_UnmarshalJSON(t *testing.T) {
 		{
 			name: "empty id kind",
 
-			idAsJSON: `"_12345"`,
+			idAsJSON: `":12345"`,
 
 			expectedError: &idmint.IDKindEmptyError{},
 		},
 		{
 			name: "empty id value",
 
-			idAsJSON: `"user_"`,
+			idAsJSON: `"user:"`,
 
 			expectedError: &idmint.IDValueEmptyError{},
 		},
 		{
 			name: "empty id value",
 
-			idAsJSON: `"user_value_with_underscores"`,
+			idAsJSON: `"user:value:with:underscores"`,
 
-			expectedError: &idmint.IDValueContainsUnderscoresError{},
+			expectedError: &idmint.IDValueContainsColonsError{},
 		},
 	}
 	for _, testCase := range testCases {

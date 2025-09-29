@@ -44,13 +44,13 @@ func MustNewID(kind, value string) ID {
 }
 
 // InvalidIDFormatError indicates that a string to be parsed as an ID is not
-// of the format "<kind>_<value>".
+// of the format "<kind>:<value>".
 type InvalidIDFormatError struct {
 	idAsString string
 }
 
 func (e InvalidIDFormatError) Error() string {
-	errorString := "want id to have format '<kind>_<value>' but got '%s'"
+	errorString := "want id to have format '<kind>:<value>' but got '%s'"
 	return fmt.Sprintf(errorString, e.idAsString)
 }
 
@@ -58,11 +58,11 @@ func (e InvalidIDFormatError) ID() string {
 	return e.idAsString
 }
 
-// ParseID parses a string of the format "<kind>_<value>" into an ID. However,
+// ParseID parses a string of the format "<kind>:<value>" into an ID. However,
 // if the string format is invalid or the kind or the value is invalid (as
 // specified by ID.Valid), an error is returned.
 func ParseID(idAsString string) (ID, error) {
-	kind, value, found := strings.Cut(idAsString, "_")
+	kind, value, found := strings.Cut(idAsString, ":")
 	if !found {
 		return ID{}, &InvalidIDFormatError{idAsString: idAsString}
 	}
@@ -103,10 +103,10 @@ func (e IDKindEmptyError) Error() string {
 	return "id kind is empty"
 }
 
-// IDKindContainsUnderscoresError indicates an ID's kind contains underscores.
-type IDKindContainsUnderscoresError struct{}
+// IDKindContainsColonsError indicates an ID's kind contains underscores.
+type IDKindContainsColonsError struct{}
 
-func (e IDKindContainsUnderscoresError) Error() string {
+func (e IDKindContainsColonsError) Error() string {
 	return "id kind contains underscores"
 }
 
@@ -117,10 +117,10 @@ func (e IDValueEmptyError) Error() string {
 	return "id value is empty"
 }
 
-// IDValueContainsUnderscoresError indicates an ID's value contains underscores.
-type IDValueContainsUnderscoresError struct{}
+// IDValueContainsColonsError indicates an ID's value contains underscores.
+type IDValueContainsColonsError struct{}
 
-func (e IDValueContainsUnderscoresError) Error() string {
+func (e IDValueContainsColonsError) Error() string {
 	return "id value contains underscores"
 }
 
@@ -131,16 +131,16 @@ func (id ID) Valid() error {
 		return &IDKindEmptyError{}
 	}
 
-	if strings.Contains(id.Kind(), "_") {
-		return &IDKindContainsUnderscoresError{}
+	if strings.Contains(id.Kind(), ":") {
+		return &IDKindContainsColonsError{}
 	}
 
 	if id.Value() == "" {
 		return &IDValueEmptyError{}
 	}
 
-	if strings.Contains(id.Value(), "_") {
-		return &IDValueContainsUnderscoresError{}
+	if strings.Contains(id.Value(), ":") {
+		return &IDValueContainsColonsError{}
 	}
 
 	return nil
@@ -151,14 +151,14 @@ var _ fmt.Stringer = (*ID)(nil)
 const invalidIDString = "InvalidID"
 
 // String returns the string representation of the ID in the format
-// "<kind>_<value>". However, if the ID is invalid, it returns "InvalidID".
+// "<kind>:<value>". However, if the ID is invalid, it returns "InvalidID".
 func (id ID) String() string {
 	err := id.Valid()
 	if err != nil {
 		return invalidIDString
 	}
 
-	return id.Kind() + "_" + id.Value()
+	return id.Kind() + ":" + id.Value()
 }
 
 // Equal returns a boolean denoting whether two IDs are equal by comparing
@@ -171,7 +171,7 @@ func (id ID) Equal(jd ID) bool {
 var _ json.Marshaler = (*ID)(nil)
 
 // MarshalJSON implements the [encoding/json.Marshaler] interface. It marshals
-// the ID into a JSON string in the format "<kind>_<value>". However, an
+// the ID into a JSON string in the format "<kind>:<value>". However, an
 // error is returned if the ID is invalid.
 func (id ID) MarshalJSON() ([]byte, error) {
 	err := id.Valid()
@@ -179,14 +179,14 @@ func (id ID) MarshalJSON() ([]byte, error) {
 		return nil, fmt.Errorf("validating id: %w", err)
 	}
 
-	idAsJSON := []byte(`"` + id.Kind() + `_` + id.Value() + `"`)
+	idAsJSON := []byte(`"` + id.Kind() + `:` + id.Value() + `"`)
 	return idAsJSON, nil
 }
 
 var _ json.Unmarshaler = (*ID)(nil)
 
 // UnmarshalJSON implements the [encoding/json.Unmarshaler] interface. It
-// unmarshals a JSON string of the format "<kind>_<value>" in to an ID. However,
+// unmarshals a JSON string of the format "<kind>:<value>" in to an ID. However,
 // an error is returned if the ID is invalid.
 func (id *ID) UnmarshalJSON(idAsJson []byte) error {
 	var idAsString string
