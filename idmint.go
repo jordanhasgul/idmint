@@ -270,10 +270,10 @@ func NewMinter(workerID uint64, configurers ...Configurer) (*Minter, error) {
 // Mint returns a unique, time-sortable, ID for a kind of 'resource'. However,
 // it returns an error if:
 //
-//  - The current time is before the start of minting time or after the end of
-//    minting time, where the end of minting time = start of minting time + 2^42 - 1 millseconds.
-//  - The current time has moved backwards since the last ID was minted.
-//  - The minter has minted more than 4096 IDs in the current millisecond.
+//   - The current time is before the start of minting time or after the end of
+//     minting time, where the end of minting time = start of minting time + 2^42 - 1 millseconds.
+//   - The current time has moved backwards since the last ID was minted.
+//   - The minter has minted more than 4096 IDs in the current millisecond.
 func (m *Minter) Mint(kind string) (ID, error) {
 	m.once.Do(m.initialise)
 
