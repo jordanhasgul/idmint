@@ -47,7 +47,6 @@ now := time.Now()
 minter, err := idmint.NewMinter(
 	workerID, 
 	idmint.WithEpoch(now),
-	
 )
 if err != nil {
 	// handle error
