@@ -401,7 +401,7 @@ func TestMinter_Mint(t *testing.T) {
 		id, err := minter.Mint("user")
 		require.NoError(t, err)
 
-		pattern := regexp.MustCompile("encoded\\(.*\\)")
+		pattern := regexp.MustCompile(`encoded(.*)`)
 		assert.Regexp(t, pattern, id.String())
 	})
 
