@@ -1,0 +1,136 @@
+name: on-release
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  check-gomod:
+    name: Check Go module is tidy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Check tidiness
+        run: go mod tidy && git diff --exit-code
+
+  lint:
+    name: Run linters
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.5.0
+
+  test:
+    name: Run tests
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+        go-version: [ 'stable', 'oldstable' ]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Run Go test
+        run: go test -v -race -cover -coverprofile coverage.out -covermode atomic ./...
+
+      - name: Generate coverage report
+        run: go tool cover -html coverage.out -o coverage.html
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-${{ matrix.os }}-${{ matrix.go-version }}
+          path: coverage.html
+
+  check-vulns:
+    name: Check for vulnerabilities
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Run govulncheck
+        uses: golang/govulncheck-action@v1
+
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+    if: success()
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Check for version update
+        id: version_update_check
+        run: |
+          new_version=$(grep -o 'Version = "[^"]*' version.go | grep -o '[^"]*$')
+          if [[ -z "new_version" ]]; then
+              echo "Error: Could not find new version"
+              exit 1
+          fi
+          
+          old_version=$(git show "origin/main:version.go" | grep -o 'Version = "[^"]*' version.go | grep -o '[^"]*$')
+          if [[ -z "$old_version" ]]; then
+              old_version="0.0.0"
+          fi
+          
+          latest_version=$(printf "%s\n%s" "$new_version" "$old_version" | sort -V | tail -n1)
+          
+          version_changed=false
+          if [[ "$new_version" == "$latest_version" && "$new_version" != "$old_version" ]]; then
+            echo "new_version=${new_version}" >> $GITHUB_OUTPUT
+            version_changed=true
+          fi
+          
+          echo "version_changed=$version_changed" >> $GITHUB_OUTPUT
+
+      - name: Create tag
+        if: steps.version_update_check.outputs.version_changed == 'true'
+        run: |
+          new_version="v${{ steps.version_update_check.outputs.new_version }}"
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git tag $new_version
+          git push origin $new_version
