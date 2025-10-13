@@ -1,0 +1,150 @@
+name: on-pull-request
+
+on:
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check-gomod:
+    name: Check Go module is tidy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Check tidiness
+        run: go mod tidy && git diff --exit-code
+
+  lint:
+    name: Run linters
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.5.0
+
+  test:
+    name: Run tests
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+        go-version: [ 'stable', 'oldstable' ]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Run Go test
+        run: go test -v -race -cover -coverprofile coverage.out -covermode atomic ./...
+
+      - name: Generate coverage report
+        run: go tool cover -html coverage.out -o coverage.html
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-${{ matrix.os }}-${{ matrix.go-version }}
+          path: coverage.html
+
+  check-vulns:
+    name: Check for vulnerabilities
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Run govulncheck
+        uses: golang/govulncheck-action@v1
+
+  remind-version-update:
+    name: Remind to update library version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for version update
+        id: version_update_check
+        run: |
+          new_version=$(grep -o 'Version = "[^"]*' version.go | grep -o '[^"]*$')
+          if [[ -z "new_version" ]]; then
+              echo "Error: Could not find new version"
+              exit 1
+          fi
+          
+          old_version=$(git show "origin/main:version.go" | grep -o 'Version = "[^"]*' version.go | grep -o '[^"]*$')
+          if [[ -z "$old_version" ]]; then
+              old_version="0.0.0"
+          fi
+          
+          latest_version=$(printf "%s\n%s" "$new_version" "$old_version" | sort -V | tail -n1)
+          
+          version_changed=false
+          if [[ "$new_version" == "$latest_version" && "$new_version" != "$old_version" ]]; then
+            echo "new_version=${new_version}" >> $GITHUB_OUTPUT
+            has_new_version=true
+          fi
+          
+          files_changed=$(git --no-pager diff --name-only HEAD origin/main | grep -v "^version.go$")
+          
+          post_reminder=false
+          if [[ -n "$files_changed" && "$version_changed" != true ]]; then
+            post_reminder=true
+          fi
+          
+          echo "post_reminder=$post_reminder" >> $GITHUB_OUTPUT
+
+      - name: Post reminder to update library version
+        if: steps.version_update_check.outputs.post_reminder == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          comment_body="### 🤖 Version Update Reminder
+          
+          Hey! I've noticed that you've made changes to the library, but the library version hasn't been updated. 
+          
+          If it should be updated, please remember to do by updating \`version.go\`!"
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          gh pr comment ${{ github.event.pull_request.number }} --body "$comment_body"
