@@ -65,16 +65,17 @@ type IDValueParseError struct {
 	parseErr      error
 }
 
+func (e IDValueParseError) Value() string {
+	return e.valueAsString
+}
+
 func (e IDValueParseError) Error() string {
-	return fmt.Sprintf("parsing value '%s': %s", e.valueAsString, e.parseErr)
+	errorString := "parsing value '%s': %s"
+	return fmt.Sprintf(errorString, e.valueAsString, e.parseErr)
 }
 
 func (e IDValueParseError) Unwrap() error {
 	return e.parseErr
-}
-
-func (e IDValueParseError) Value() string {
-	return e.valueAsString
 }
 
 // ParseID parses a string of the format "<kind>:<value>" into an ID. However,
