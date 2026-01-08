@@ -14,12 +14,12 @@ import (
 // ID represents an immutable identifier for a kind of 'resource'.
 type ID struct {
 	kind  string
-	value string
+	value uint64
 }
 
 // NewID returns a new ID from a kind and a value. However, if the kind or
 // the value is invalid (as specified by ID.Valid), an error is returned.
-func NewID(kind, value string) (ID, error) {
+func NewID(kind string, value uint64) (ID, error) {
 	id := ID{
 		kind:  kind,
 		value: value,
@@ -33,7 +33,7 @@ func NewID(kind, value string) (ID, error) {
 }
 
 // MustNewID is like NewID but panics if creation fails.
-func MustNewID(kind, value string) ID {
+func MustNewID(kind string, value uint64) ID {
 	id, err := NewID(kind, value)
 	if err != nil {
 		err = fmt.Errorf("creating id: %w", err)
@@ -58,13 +58,46 @@ func (e InvalidIDFormatError) ID() string {
 	return e.idAsString
 }
 
+// IDValueParseError indicates that the value part of an ID string could not be
+// parsed as a uint64.
+type IDValueParseError struct {
+	valueAsString string
+	parseErr      error
+}
+
+func (e IDValueParseError) Error() string {
+	return fmt.Sprintf("parsing value '%s': %s", e.valueAsString, e.parseErr)
+}
+
+func (e IDValueParseError) Unwrap() error {
+	return e.parseErr
+}
+
+func (e IDValueParseError) Value() string {
+	return e.valueAsString
+}
+
 // ParseID parses a string of the format "<kind>:<value>" into an ID. However,
 // if the string format is invalid or the kind or the value is invalid (as
 // specified by ID.Valid), an error is returned.
 func ParseID(idAsString string) (ID, error) {
-	kind, value, found := strings.Cut(idAsString, ":")
+	kind, valueAsString, found := strings.Cut(idAsString, ":")
 	if !found {
-		return ID{}, &InvalidIDFormatError{idAsString: idAsString}
+		return ID{}, &InvalidIDFormatError{
+			idAsString: idAsString,
+		}
+	}
+
+	const (
+		base10    = 10
+		bitSize64 = 64
+	)
+	value, err := strconv.ParseUint(valueAsString, base10, bitSize64)
+	if err != nil {
+		return ID{}, &IDValueParseError{
+			valueAsString: valueAsString,
+			parseErr:      err,
+		}
 	}
 
 	id, err := NewID(kind, value)
@@ -92,7 +125,7 @@ func (id ID) Kind() string {
 }
 
 // Value returns the value part of the ID.
-func (id ID) Value() string {
+func (id ID) Value() uint64 {
 	return id.value
 }
 
@@ -110,37 +143,16 @@ func (e IDKindContainsColonsError) Error() string {
 	return "id kind contains underscores"
 }
 
-// IDValueEmptyError indicates an ID's value was empty.
-type IDValueEmptyError struct{}
-
-func (e IDValueEmptyError) Error() string {
-	return "id value is empty"
-}
-
-// IDValueContainsColonsError indicates an ID's value contains underscores.
-type IDValueContainsColonsError struct{}
-
-func (e IDValueContainsColonsError) Error() string {
-	return "id value contains underscores"
-}
-
 // Valid returns an error if the ID's kind or the ID's value was empty or
 // contains underscores.
 func (id ID) Valid() error {
-	if id.Kind() == "" {
+	kind := id.Kind()
+	if kind == "" {
 		return &IDKindEmptyError{}
 	}
 
-	if strings.Contains(id.Kind(), ":") {
+	if strings.Contains(kind, ":") {
 		return &IDKindContainsColonsError{}
-	}
-
-	if id.Value() == "" {
-		return &IDValueEmptyError{}
-	}
-
-	if strings.Contains(id.Value(), ":") {
-		return &IDValueContainsColonsError{}
 	}
 
 	return nil
@@ -158,7 +170,17 @@ func (id ID) String() string {
 		return invalidIDString
 	}
 
-	return id.Kind() + ":" + id.Value()
+	return id.string()
+}
+
+func (id ID) string() string {
+	const base10 = 10
+	var (
+		kind           = id.Kind()
+		value          = id.Value()
+		formattedValue = strconv.FormatUint(value, base10)
+	)
+	return kind + ":" + formattedValue
 }
 
 // Equal returns a boolean denoting whether two IDs are equal by comparing
@@ -179,7 +201,7 @@ func (id ID) MarshalJSON() ([]byte, error) {
 		return nil, fmt.Errorf("validating id: %w", err)
 	}
 
-	idAsJSON := []byte(`"` + id.Kind() + `:` + id.Value() + `"`)
+	idAsJSON := []byte(`"` + id.string() + `"`)
 	return idAsJSON, nil
 }
 
@@ -229,8 +251,6 @@ type Minter struct {
 
 	lastMintedAt   time.Time
 	sequenceNumber uint64
-
-	encoder Encoder
 }
 
 // Configurer configures the behaviour of a Minter.
@@ -283,17 +303,9 @@ func (m *Minter) Mint(kind string) (ID, error) {
 		return ID{}, fmt.Errorf("attempting to mint: %w", err)
 	}
 
-	rawValue := m.doMint(now, sequenceNumber)
+	value := m.doMint(now, sequenceNumber)
 
-	const base10 int = 10
-	formattedValue := strconv.FormatUint(rawValue, base10)
-
-	encodedValue, err := m.encoder.Encode(formattedValue)
-	if err != nil {
-		return ID{}, fmt.Errorf("encoding value: %w", err)
-	}
-
-	id, err := NewID(kind, encodedValue)
+	id, err := NewID(kind, value)
 	if err != nil {
 		return ID{}, fmt.Errorf("creating id: %w", err)
 	}
@@ -442,10 +454,6 @@ func (m *Minter) initialise() {
 	}
 
 	m.lastMintedAt = m.timer.Time()
-
-	if m.encoder == nil {
-		m.encoder = noOpEncoder{}
-	}
 }
 
 // Timer retrieves the current time.
@@ -501,38 +509,4 @@ func (c *withEpochConfigurer) configure(m *Minter) {
 // WithEpoch returns a Configurer that sets a custom epoch on a Minter.
 func WithEpoch(epoch time.Time) Configurer {
 	return &withEpochConfigurer{epoch: epoch}
-}
-
-// Encoder encodes the string representation of the raw 64-bit value of the ID
-// before it is used.
-type Encoder interface {
-	Encode(s string) (string, error)
-}
-
-// EncoderFunc is an adapter that allows us to use ordinary functions as an Encoder.
-type EncoderFunc func(s string) (string, error)
-
-func (f EncoderFunc) Encode(s string) (string, error) {
-	return f(s)
-}
-
-type withEncoderConfigurer struct {
-	encoder Encoder
-}
-
-func (c *withEncoderConfigurer) configure(m *Minter) {
-	m.encoder = c.encoder
-}
-
-// WithEncoder returns a Configurer that sets a custom Encoder on a Minter.
-func WithEncoder(encoder Encoder) Configurer {
-	return &withEncoderConfigurer{encoder: encoder}
-}
-
-type noOpEncoder struct{}
-
-var _ Encoder = (*noOpEncoder)(nil)
-
-func (e noOpEncoder) Encode(s string) (string, error) {
-	return s, nil
 }

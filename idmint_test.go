@@ -2,7 +2,7 @@ package idmint_test
 
 import (
 	"encoding/json"
-	"regexp"
+	"fmt"
 	"runtime"
 	"testing"
 	"time"
@@ -20,7 +20,7 @@ func TestNewID(t *testing.T) {
 		t.Parallel()
 
 		idKind := "user"
-		idValue := "12345"
+		idValue := uint64(12345)
 
 		id, err := idmint.NewID(idKind, idValue)
 		require.NoError(t, err)
@@ -33,41 +33,25 @@ func TestNewID(t *testing.T) {
 		name string
 
 		kind  string
-		value string
+		value uint64
 
 		expectedError error
 	}{
 		{
-			name: "empty kind",
+			name: "empty id kind",
 
 			kind:  "",
-			value: "12345",
+			value: 12345,
 
 			expectedError: &idmint.IDKindEmptyError{},
 		},
 		{
-			name: "kind with colons",
+			name: "id kind with colons",
 
 			kind:  "user:profile",
-			value: "12345",
+			value: 12345,
 
 			expectedError: &idmint.IDKindContainsColonsError{},
-		},
-		{
-			name: "empty value",
-
-			kind:  "user",
-			value: "",
-
-			expectedError: &idmint.IDValueEmptyError{},
-		},
-		{
-			name: "value with colons",
-
-			kind:  "user",
-			value: "value:with:underscore",
-
-			expectedError: &idmint.IDValueContainsColonsError{},
 		},
 	}
 	for _, testCase := range testCases {
@@ -88,29 +72,14 @@ func TestParseID(t *testing.T) {
 		t.Parallel()
 
 		idKind := "user"
-		idValue := "12345"
-		idAsString := idKind + ":" + idValue
+		idValue := uint64(12345)
+		idAsString := fmt.Sprintf("%s:%d", idKind, idValue)
 
 		id, err := idmint.ParseID(idAsString)
 		require.NoError(t, err)
 
 		assert.Equal(t, idKind, id.Kind())
 		assert.Equal(t, idValue, id.Value())
-	})
-
-	t.Run("invalid id string", func(t *testing.T) {
-		t.Parallel()
-
-		idKind := "user"
-		idValue := "12345"
-		idAsString := idKind + idValue
-
-		_, err := idmint.ParseID(idAsString)
-		require.Error(t, err)
-
-		var ife *idmint.InvalidIDFormatError
-		require.ErrorAs(t, err, &ife)
-		assert.Equal(t, idAsString, ife.ID())
 	})
 
 	testCases := []struct {
@@ -121,25 +90,67 @@ func TestParseID(t *testing.T) {
 		expectedError error
 	}{
 		{
-			name: "fails on empty kind part",
+			name: "invalid id format",
+
+			idAsString: "user12345",
+
+			expectedError: &idmint.InvalidIDFormatError{},
+		},
+		{
+			name: "empty id kind",
 
 			idAsString: ":12345",
 
 			expectedError: &idmint.IDKindEmptyError{},
 		},
 		{
-			name: "fails on empty value part",
+			name: "id kind containing colon",
+
+			idAsString: "user:profile:12345",
+
+			expectedError: &idmint.IDKindContainsColonsError{},
+		},
+		{
+			name: "empty id value",
 
 			idAsString: "user:",
 
-			expectedError: &idmint.IDValueEmptyError{},
+			expectedError: &idmint.IDValueParseError{},
 		},
 		{
-			name: "fails on value with extra underscores",
+			name: "non-numeric id value",
 
-			idAsString: "user:value:with:underscores",
+			idAsString: "user:abc",
 
-			expectedError: &idmint.IDValueContainsColonsError{},
+			expectedError: &idmint.IDValueParseError{},
+		},
+		{
+			name: "id value with colons",
+
+			idAsString: "user:123:456",
+
+			expectedError: &idmint.IDValueParseError{},
+		},
+		{
+			name: "id value is negative",
+
+			idAsString: "user:-123",
+
+			expectedError: &idmint.IDValueParseError{},
+		},
+		{
+			name: "id value with whitespace",
+
+			idAsString: "user: 123",
+
+			expectedError: &idmint.IDValueParseError{},
+		},
+		{
+			name: "id value overflows uint64",
+
+			idAsString: "user:18446744073709551616",
+
+			expectedError: &idmint.IDValueParseError{},
 		},
 	}
 	for _, testCase := range testCases {
@@ -160,12 +171,12 @@ func TestID_String(t *testing.T) {
 		t.Parallel()
 
 		idKind := "user"
-		idValue := "12345"
+		idValue := uint64(12345)
 
 		id, err := idmint.NewID(idKind, idValue)
 		require.NoError(t, err)
 
-		idAsString := id.Kind() + ":" + idValue
+		idAsString := fmt.Sprintf("%s:%d", id.Kind(), idValue)
 		assert.Equal(t, idAsString, id.String())
 	})
 
@@ -199,31 +210,31 @@ func TestID_Equal(t *testing.T) {
 		{
 			name: "equal valid ids",
 
-			id1: idmint.MustNewID("user", "12345"),
-			id2: idmint.MustNewID("user", "12345"),
+			id1: idmint.MustNewID("user", 12345),
+			id2: idmint.MustNewID("user", 12345),
 
 			expectedEqual: true,
 		},
 		{
 			name: "valid ids, different kinds",
 
-			id1: idmint.MustNewID("user", "12345"),
-			id2: idmint.MustNewID("order", "12345"),
+			id1: idmint.MustNewID("user", 12345),
+			id2: idmint.MustNewID("order", 12345),
 
 			expectedEqual: false,
 		},
 		{
 			name: "valid ids, different values",
 
-			id1: idmint.MustNewID("user", "12345"),
-			id2: idmint.MustNewID("user", "67890"),
+			id1: idmint.MustNewID("user", 12345),
+			id2: idmint.MustNewID("user", 67890),
 
 			expectedEqual: false,
 		},
 		{
 			name: "valid id and invalid id",
 
-			id1: idmint.MustNewID("user", "12345"),
+			id1: idmint.MustNewID("user", 12345),
 			id2: idmint.ID{},
 
 			expectedEqual: false,
@@ -246,8 +257,8 @@ func TestID_MarshalJSON(t *testing.T) {
 		t.Parallel()
 
 		idKind := "user"
-		idValue := "12345"
-		idAsString := idKind + ":" + idValue
+		idValue := uint64(12345)
+		idAsString := fmt.Sprintf("%s:%d", idKind, idValue)
 
 		id, err := idmint.NewID(idKind, idValue)
 		require.NoError(t, err)
@@ -274,8 +285,8 @@ func TestID_UnmarshalJSON(t *testing.T) {
 		t.Parallel()
 
 		idKind := "user"
-		idValue := "12345"
-		idAsJSON := `"` + idKind + ":" + idValue + `"`
+		idValue := uint64(12345)
+		idAsJSON := fmt.Sprintf(`"%s:%d"`, idKind, idValue)
 
 		var id idmint.ID
 		err := json.Unmarshal([]byte(idAsJSON), &id)
@@ -315,18 +326,18 @@ func TestID_UnmarshalJSON(t *testing.T) {
 			expectedError: &idmint.IDKindEmptyError{},
 		},
 		{
-			name: "empty id value",
+			name: "id kind containing colon",
 
-			idAsJSON: `"user:"`,
+			idAsJSON: `"user:profile:12345"`,
 
-			expectedError: &idmint.IDValueEmptyError{},
+			expectedError: &idmint.IDKindContainsColonsError{},
 		},
 		{
-			name: "empty id value",
+			name: "invalid id value",
 
-			idAsJSON: `"user:value:with:underscores"`,
+			idAsJSON: `"user:abc"`,
 
-			expectedError: &idmint.IDValueContainsColonsError{},
+			expectedError: &idmint.IDValueParseError{},
 		},
 	}
 	for _, testCase := range testCases {
@@ -387,23 +398,6 @@ func (c *controllableTimer) MoveTimeBy(duration time.Duration) {
 
 func TestMinter_Mint(t *testing.T) {
 	t.Parallel()
-
-	t.Run("id value gets encoded", func(t *testing.T) {
-		t.Parallel()
-
-		encoder := idmint.EncoderFunc(func(s string) (string, error) {
-			return "encoded(" + s + ")", nil
-		})
-		minter, err := idmint.NewMinter(0, idmint.WithEncoder(encoder))
-		require.NoError(t, err)
-		require.NotNil(t, minter)
-
-		id, err := minter.Mint("user")
-		require.NoError(t, err)
-
-		pattern := regexp.MustCompile(`encoded(.*)`)
-		assert.Regexp(t, pattern, id.String())
-	})
 
 	t.Run("id values increase in the same timestamp", func(t *testing.T) {
 		t.Parallel()
