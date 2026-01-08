@@ -21,7 +21,7 @@ However, if you have multiple nodes that will be minting IDs, you must create an
 `idmint.NewMinter` function and pass a unique worker ID:
 
 ```go
-var workerID string
+var workerID uint64
 
 // ...
 // compute a unique worker id
