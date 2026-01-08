@@ -112,7 +112,7 @@ func ParseID(idAsString string) (ID, error) {
 func MustParseID(idAsString string) ID {
 	id, err := ParseID(idAsString)
 	if err != nil {
-		err = fmt.Errorf("parsing id: %v", err)
+		err = fmt.Errorf("parsing id: %w", err)
 		panic(err)
 	}
 
@@ -136,15 +136,15 @@ func (e IDKindEmptyError) Error() string {
 	return "id kind is empty"
 }
 
-// IDKindContainsColonsError indicates an ID's kind contains underscores.
+// IDKindContainsColonsError indicates an ID's kind contains colons.
 type IDKindContainsColonsError struct{}
 
 func (e IDKindContainsColonsError) Error() string {
-	return "id kind contains underscores"
+	return "id kind contains colons"
 }
 
 // Valid returns an error if the ID's kind or the ID's value was empty or
-// contains underscores.
+// contains colons.
 func (id ID) Valid() error {
 	kind := id.Kind()
 	if kind == "" {
@@ -210,12 +210,12 @@ var _ json.Unmarshaler = (*ID)(nil)
 // UnmarshalJSON implements the [encoding/json.Unmarshaler] interface. It
 // unmarshals a JSON string of the format "<kind>:<value>" in to an ID. However,
 // an error is returned if the ID is invalid.
-func (id *ID) UnmarshalJSON(idAsJson []byte) error {
+func (id *ID) UnmarshalJSON(idAsJSON []byte) error {
 	var idAsString string
 
-	err := json.Unmarshal(idAsJson, &idAsString)
+	err := json.Unmarshal(idAsJSON, &idAsString)
 	if err != nil {
-		return fmt.Errorf("unmarshalling to string: %w", err)
+		return fmt.Errorf("unmarshaling to string: %w", err)
 	}
 
 	parsedID, err := ParseID(idAsString)
@@ -232,12 +232,12 @@ func (id *ID) UnmarshalJSON(idAsJson []byte) error {
 //
 //   - 42 bits representing the time, in milliseconds since the epoch, when
 //     the ID was minted.
-//   - 10 bits that uniquely the worker that minted the ID.
+//   - 10 bits that uniquely identify the worker that minted the ID.
 //   - 12 bits the number of the ID in the sequence of IDs minted that
 //     millisecond.
 //
-// This us to have 1024 workers each minting 4096 IDs per millisecond. It is
-// safe for concurrent use.
+// This allows us to have 1024 workers each minting 4096 IDs per millisecond. It
+// is safe for concurrent use.
 type Minter struct {
 	once sync.Once
 
@@ -291,7 +291,8 @@ func NewMinter(workerID uint64, configurers ...Configurer) (*Minter, error) {
 // it returns an error if:
 //
 //   - The current time is before the start of minting time or after the end of
-//     minting time, where the end of minting time = start of minting time + 2^42 - 1 millseconds.
+//     minting time, where the end of minting time = start of minting time + 2^42 - 1
+//     milliseconds.
 //   - The current time has moved backwards since the last ID was minted.
 //   - The minter has minted more than 4096 IDs in the current millisecond.
 func (m *Minter) Mint(kind string) (ID, error) {

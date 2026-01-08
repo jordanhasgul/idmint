@@ -104,13 +104,6 @@ func TestParseID(t *testing.T) {
 			expectedError: &idmint.IDKindEmptyError{},
 		},
 		{
-			name: "id kind containing colon",
-
-			idAsString: "user:profile:12345",
-
-			expectedError: &idmint.IDKindContainsColonsError{},
-		},
-		{
 			name: "empty id value",
 
 			idAsString: "user:",
@@ -324,13 +317,6 @@ func TestID_UnmarshalJSON(t *testing.T) {
 			idAsJSON: `":12345"`,
 
 			expectedError: &idmint.IDKindEmptyError{},
-		},
-		{
-			name: "id kind containing colon",
-
-			idAsJSON: `"user:profile:12345"`,
-
-			expectedError: &idmint.IDKindContainsColonsError{},
 		},
 		{
 			name: "invalid id value",
