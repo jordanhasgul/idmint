@@ -244,7 +244,7 @@ type Minter struct {
 
 	workerID uint64
 
-	timer              Timer
+	clock              Clock
 	startOfMintingTime time.Time
 	endOfMintingTime   time.Time
 
@@ -299,7 +299,7 @@ func NewMinter(workerID uint64, configurers ...Configurer) (*Minter, error) {
 func (m *Minter) Mint(kind string) (ID, error) {
 	m.once.Do(m.initialise)
 
-	now := m.timer.Time()
+	now := m.clock.Now()
 	sequenceNumber, err := m.canMint(now)
 	if err != nil {
 		return ID{}, fmt.Errorf("attempting to mint: %w", err)
@@ -447,57 +447,57 @@ func (m *Minter) initialise() {
 	m.startOfMintingTime = m.startOfMintingTime.Truncate(time.Millisecond)
 	m.endOfMintingTime = m.startOfMintingTime.Add(maxTimestamp * time.Millisecond)
 
-	if m.timer == nil {
-		m.timer = stdTimer{}
+	if m.clock == nil {
+		m.clock = stdClock{}
 	}
-	m.timer = truncatingTimer{
-		timer:    m.timer,
+	m.clock = truncatingClock{
+		clock:    m.clock,
 		duration: time.Millisecond,
 	}
 
-	m.lastMintedAt = m.timer.Time()
+	m.lastMintedAt = m.clock.Now()
 }
 
-// Timer retrieves the current time.
-type Timer interface {
-	Time() time.Time
+// Clock retrieves the current time.
+type Clock interface {
+	Now() time.Time
 }
 
-// TimerFunc is an adapter that allows us to use ordinary functions as a Timer.
-type TimerFunc func() time.Time
+// ClockFunc is an adapter that allows us to use ordinary functions as a Clock.
+type ClockFunc func() time.Time
 
-func (f TimerFunc) Time() time.Time {
+func (f ClockFunc) Now() time.Time {
 	return f()
 }
 
-type withTimerConfigurer struct {
-	timer Timer
+type withClockConfigurer struct {
+	clock Clock
 }
 
-func (c *withTimerConfigurer) configure(m *Minter) {
-	m.timer = c.timer
+func (c *withClockConfigurer) configure(m *Minter) {
+	m.clock = c.clock
 }
 
-// WithTimer returns a Configurer that sets a custom Timer on a Minter.
-func WithTimer(timer Timer) Configurer {
-	return &withTimerConfigurer{timer: timer}
+// WithClock returns a Configurer that sets a custom Clock on a Minter.
+func WithClock(clock Clock) Configurer {
+	return &withClockConfigurer{clock: clock}
 }
 
-type stdTimer struct{}
+type stdClock struct{}
 
-var _ Timer = (*stdTimer)(nil)
+var _ Clock = (*stdClock)(nil)
 
-func (s stdTimer) Time() time.Time {
+func (s stdClock) Now() time.Time {
 	return time.Now()
 }
 
-type truncatingTimer struct {
-	timer    Timer
+type truncatingClock struct {
+	clock    Clock
 	duration time.Duration
 }
 
-func (t truncatingTimer) Time() time.Time {
-	return t.timer.Time().Truncate(t.duration)
+func (t truncatingClock) Now() time.Time {
+	return t.clock.Now().Truncate(t.duration)
 }
 
 type withEpochConfigurer struct {

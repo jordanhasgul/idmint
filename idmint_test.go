@@ -364,21 +364,21 @@ func TestNewMinter(t *testing.T) {
 	})
 }
 
-type controllableTimer struct {
+type controllableClock struct {
 	now time.Time
 }
 
-var _ idmint.Timer = (*controllableTimer)(nil)
+var _ idmint.Clock = (*controllableClock)(nil)
 
-func (c *controllableTimer) Time() time.Time {
+func (c *controllableClock) Now() time.Time {
 	return c.now
 }
 
-func (c *controllableTimer) SetTimeTo(time time.Time) {
+func (c *controllableClock) SetTimeTo(time time.Time) {
 	c.now = time
 }
 
-func (c *controllableTimer) MoveTimeBy(duration time.Duration) {
+func (c *controllableClock) MoveTimeBy(duration time.Duration) {
 	c.now = c.now.Add(duration)
 }
 
@@ -388,10 +388,10 @@ func TestMinter_Mint(t *testing.T) {
 	t.Run("id values increase in the same timestamp", func(t *testing.T) {
 		t.Parallel()
 
-		timer := &controllableTimer{
+		clock := &controllableClock{
 			now: time.Now(),
 		}
-		minter, err := idmint.NewMinter(0, idmint.WithTimer(timer))
+		minter, err := idmint.NewMinter(0, idmint.WithClock(clock))
 		require.NoError(t, err)
 		require.NotNil(t, minter)
 
@@ -414,10 +414,10 @@ func TestMinter_Mint(t *testing.T) {
 	t.Run("id values increase as time moves forward", func(t *testing.T) {
 		t.Parallel()
 
-		timer := &controllableTimer{
+		clock := &controllableClock{
 			now: time.Now(),
 		}
-		minter, err := idmint.NewMinter(0, idmint.WithTimer(timer))
+		minter, err := idmint.NewMinter(0, idmint.WithClock(clock))
 		require.NoError(t, err)
 		require.NotNil(t, minter)
 
@@ -425,13 +425,13 @@ func TestMinter_Mint(t *testing.T) {
 		require.NoError(t, err)
 		require.NotZero(t, id1)
 
-		timer.MoveTimeBy(time.Millisecond)
+		clock.MoveTimeBy(time.Millisecond)
 
 		id2, err := minter.Mint("user")
 		require.NoError(t, err)
 		require.NotZero(t, id2)
 
-		timer.MoveTimeBy(time.Millisecond)
+		clock.MoveTimeBy(time.Millisecond)
 
 		id3, err := minter.Mint("user")
 		require.NoError(t, err)
@@ -445,12 +445,12 @@ func TestMinter_Mint(t *testing.T) {
 		t.Parallel()
 
 		epoch := time.Now()
-		timer := &controllableTimer{
+		clock := &controllableClock{
 			now: epoch.Add(-1 * time.Millisecond),
 		}
 		minter, err := idmint.NewMinter(
 			0,
-			idmint.WithTimer(timer),
+			idmint.WithClock(clock),
 			idmint.WithEpoch(epoch),
 		)
 		require.NoError(t, err)
@@ -470,12 +470,12 @@ func TestMinter_Mint(t *testing.T) {
 		const maxTimestampPlusOne = 1 << 42
 
 		epoch := time.Now()
-		timer := &controllableTimer{
+		clock := &controllableClock{
 			now: epoch.Add(maxTimestampPlusOne * time.Millisecond),
 		}
 		minter, err := idmint.NewMinter(
 			0,
-			idmint.WithTimer(timer),
+			idmint.WithClock(clock),
 			idmint.WithEpoch(epoch),
 		)
 		require.NoError(t, err)
@@ -493,12 +493,12 @@ func TestMinter_Mint(t *testing.T) {
 		t.Parallel()
 
 		epoch := time.Now()
-		timer := &controllableTimer{
+		clock := &controllableClock{
 			now: epoch.Add(1 * time.Millisecond),
 		}
 		minter, err := idmint.NewMinter(
 			0,
-			idmint.WithTimer(timer),
+			idmint.WithClock(clock),
 			idmint.WithEpoch(epoch),
 		)
 		require.NoError(t, err)
@@ -508,7 +508,7 @@ func TestMinter_Mint(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, id1)
 
-		timer.MoveTimeBy(-1 * time.Millisecond)
+		clock.MoveTimeBy(-1 * time.Millisecond)
 
 		id2, err := minter.Mint("user")
 		require.Error(t, err)
@@ -521,10 +521,10 @@ func TestMinter_Mint(t *testing.T) {
 	t.Run("cannot mint when sequence number overflows", func(t *testing.T) {
 		t.Parallel()
 
-		timer := &controllableTimer{
+		clock := &controllableClock{
 			now: time.Now(),
 		}
-		minter, err := idmint.NewMinter(0, idmint.WithTimer(timer))
+		minter, err := idmint.NewMinter(0, idmint.WithClock(clock))
 		require.NoError(t, err)
 		require.NotNil(t, minter)
 
