@@ -3,8 +3,7 @@
 ## Overview
 
 `idmint` is a Go module for minting unique, time-sortable, IDs in a distributed system without coordination between 
-nodes. It is fully compatible with the [encoding/json](https://pkg.go.dev/encoding/json) package within the Go standard 
-library, implementing the `json.Marshaler` and `json.Unmarshaler` interfaces for seamless integration into APIs.
+nodes.
 
 ## Usage
 
@@ -37,7 +36,7 @@ You can also configure the behaviour of an `idmint.Minter` by providing some `id
 `idmint.NewMinter` function. For example:
 
 ```go
-var workerID string
+var workerID uint64
 
 // ...
 // compute a unique worker id
@@ -46,7 +45,7 @@ var workerID string
 now := time.Now()
 minter, err := idmint.NewMinter(
 	workerID, 
-	idmint.WithEpoch(now),
+	idmint.WithStartOfMintingTime(now),
 )
 if err != nil {
 	// handle error
@@ -55,11 +54,10 @@ if err != nil {
 
 ### Minting an ID
 
-Once you have created a `idmint.Minter`, you can call `idmint.Minter.Mint` to mint an ID. It requires you to specify 
-what 'kind' of ID you would like to mint:
+Once you have created an `idmint.Minter`, you can call `idmint.Minter.Mint` to mint an ID:
 
 ```go
-var workerID string
+var workerID uint64
 
 // ...
 // compute a unique worker id
@@ -70,16 +68,13 @@ if err != nil {
     // handle error
 }
 
-id, err := minter.Mint("user")
+id, err := minter.Mint()
 if err != nil {
     // handle error
 }
 
-fmt.Println(id) // e.g. "user:15099494400000"
+fmt.Println(id) // e.g. 61898956800000
 ```
-
-> Specifying the kind of ID we are minting provides a human-readable way to understand what kind of 'resource' an ID 
-> is associated with.
 
 ## Documentation
 

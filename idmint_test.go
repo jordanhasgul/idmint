@@ -335,11 +335,7 @@ func TestMinter_Mint(t *testing.T) {
 func BenchmarkMinter_Mint(b *testing.B) {
 	b.ReportAllocs()
 
-	now := time.Now()
-	minter, err := idmint.NewMinter(
-		0,
-		idmint.WithStartOfMintingTime(now),
-	)
+	minter, err := idmint.NewMinter(0)
 	require.NoError(b, err)
 	require.NotNil(b, minter)
 
