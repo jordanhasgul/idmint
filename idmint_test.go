@@ -1,8 +1,6 @@
 package idmint_test
 
 import (
-	"encoding/json"
-	"fmt"
 	"runtime"
 	"testing"
 	"time"
@@ -12,332 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func TestNewID(t *testing.T) {
-	t.Parallel()
-
-	t.Run("valid kind and value", func(t *testing.T) {
-		t.Parallel()
-
-		idKind := "user"
-		idValue := uint64(12345)
-
-		id, err := idmint.NewID(idKind, idValue)
-		require.NoError(t, err)
-
-		assert.Equal(t, idKind, id.Kind())
-		assert.Equal(t, idValue, id.Value())
-	})
-
-	testCases := []struct {
-		name string
-
-		kind  string
-		value uint64
-
-		expectedError error
-	}{
-		{
-			name: "empty id kind",
-
-			kind:  "",
-			value: 12345,
-
-			expectedError: &idmint.IDKindEmptyError{},
-		},
-		{
-			name: "id kind with colons",
-
-			kind:  "user:profile",
-			value: 12345,
-
-			expectedError: &idmint.IDKindContainsColonsError{},
-		},
-	}
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			t.Parallel()
-
-			_, err := idmint.NewID(testCase.kind, testCase.value)
-			require.Error(t, err)
-			assert.ErrorAs(t, err, &testCase.expectedError)
-		})
-	}
-}
-
-func TestParseID(t *testing.T) {
-	t.Parallel()
-
-	t.Run("valid id string", func(t *testing.T) {
-		t.Parallel()
-
-		idKind := "user"
-		idValue := uint64(12345)
-		idAsString := fmt.Sprintf("%s:%d", idKind, idValue)
-
-		id, err := idmint.ParseID(idAsString)
-		require.NoError(t, err)
-
-		assert.Equal(t, idKind, id.Kind())
-		assert.Equal(t, idValue, id.Value())
-	})
-
-	testCases := []struct {
-		name string
-
-		idAsString string
-
-		expectedError error
-	}{
-		{
-			name: "invalid id format",
-
-			idAsString: "user12345",
-
-			expectedError: &idmint.InvalidIDFormatError{},
-		},
-		{
-			name: "empty id kind",
-
-			idAsString: ":12345",
-
-			expectedError: &idmint.IDKindEmptyError{},
-		},
-		{
-			name: "empty id value",
-
-			idAsString: "user:",
-
-			expectedError: &idmint.IDValueParseError{},
-		},
-		{
-			name: "non-numeric id value",
-
-			idAsString: "user:abc",
-
-			expectedError: &idmint.IDValueParseError{},
-		},
-		{
-			name: "id value with colons",
-
-			idAsString: "user:123:456",
-
-			expectedError: &idmint.IDValueParseError{},
-		},
-		{
-			name: "id value is negative",
-
-			idAsString: "user:-123",
-
-			expectedError: &idmint.IDValueParseError{},
-		},
-		{
-			name: "id value with whitespace",
-
-			idAsString: "user: 123",
-
-			expectedError: &idmint.IDValueParseError{},
-		},
-		{
-			name: "id value overflows uint64",
-
-			idAsString: "user:18446744073709551616",
-
-			expectedError: &idmint.IDValueParseError{},
-		},
-	}
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			t.Parallel()
-
-			_, err := idmint.ParseID(testCase.idAsString)
-			require.Error(t, err)
-			assert.ErrorAs(t, err, &testCase.expectedError)
-		})
-	}
-}
-
-func TestID_String(t *testing.T) {
-	t.Parallel()
-
-	t.Run("valid id", func(t *testing.T) {
-		t.Parallel()
-
-		idKind := "user"
-		idValue := uint64(12345)
-
-		id, err := idmint.NewID(idKind, idValue)
-		require.NoError(t, err)
-
-		idAsString := fmt.Sprintf("%s:%d", id.Kind(), idValue)
-		assert.Equal(t, idAsString, id.String())
-	})
-
-	t.Run("invalid id", func(t *testing.T) {
-		t.Parallel()
-
-		var id idmint.ID
-		assert.Equal(t, "InvalidID", id.String())
-	})
-}
-
-func TestID_Equal(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name string
-
-		id1 idmint.ID
-		id2 idmint.ID
-
-		expectedEqual bool
-	}{
-		{
-			name: "equal zero ids",
-
-			id1: idmint.ID{},
-			id2: idmint.ID{},
-
-			expectedEqual: true,
-		},
-		{
-			name: "equal valid ids",
-
-			id1: idmint.MustNewID("user", 12345),
-			id2: idmint.MustNewID("user", 12345),
-
-			expectedEqual: true,
-		},
-		{
-			name: "valid ids, different kinds",
-
-			id1: idmint.MustNewID("user", 12345),
-			id2: idmint.MustNewID("order", 12345),
-
-			expectedEqual: false,
-		},
-		{
-			name: "valid ids, different values",
-
-			id1: idmint.MustNewID("user", 12345),
-			id2: idmint.MustNewID("user", 67890),
-
-			expectedEqual: false,
-		},
-		{
-			name: "valid id and invalid id",
-
-			id1: idmint.MustNewID("user", 12345),
-			id2: idmint.ID{},
-
-			expectedEqual: false,
-		},
-	}
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			t.Parallel()
-
-			equal := testCase.id1.Equal(testCase.id2)
-			assert.Equal(t, testCase.expectedEqual, equal)
-		})
-	}
-}
-
-func TestID_MarshalJSON(t *testing.T) {
-	t.Parallel()
-
-	t.Run("marshal a valid id", func(t *testing.T) {
-		t.Parallel()
-
-		idKind := "user"
-		idValue := uint64(12345)
-		idAsString := fmt.Sprintf("%s:%d", idKind, idValue)
-
-		id, err := idmint.NewID(idKind, idValue)
-		require.NoError(t, err)
-
-		idAsJSON, err := json.Marshal(id)
-		require.NoError(t, err)
-
-		assert.JSONEq(t, `"`+idAsString+`"`, string(idAsJSON))
-	})
-
-	t.Run("marshal invalid id", func(t *testing.T) {
-		t.Parallel()
-
-		var id idmint.ID
-		_, err := json.Marshal(id)
-		require.Error(t, err)
-	})
-}
-
-func TestID_UnmarshalJSON(t *testing.T) {
-	t.Parallel()
-
-	t.Run("valid id", func(t *testing.T) {
-		t.Parallel()
-
-		idKind := "user"
-		idValue := uint64(12345)
-		idAsJSON := fmt.Sprintf(`"%s:%d"`, idKind, idValue)
-
-		var id idmint.ID
-		err := json.Unmarshal([]byte(idAsJSON), &id)
-		require.NoError(t, err)
-
-		expectedID, err := idmint.NewID(idKind, idValue)
-		require.NoError(t, err)
-		assert.Equal(t, expectedID, id)
-	})
-
-	testCases := []struct {
-		name string
-
-		idAsJSON string
-
-		expectedError error
-	}{
-		{
-			name: "non-string type json value",
-
-			idAsJSON: `user:12345`,
-
-			expectedError: &json.UnmarshalTypeError{},
-		},
-		{
-			name: "invalid id format",
-
-			idAsJSON: `"user12345"`,
-
-			expectedError: &idmint.InvalidIDFormatError{},
-		},
-		{
-			name: "empty id kind",
-
-			idAsJSON: `":12345"`,
-
-			expectedError: &idmint.IDKindEmptyError{},
-		},
-		{
-			name: "invalid id value",
-
-			idAsJSON: `"user:abc"`,
-
-			expectedError: &idmint.IDValueParseError{},
-		},
-	}
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			t.Parallel()
-
-			var id idmint.ID
-			err := json.Unmarshal([]byte(testCase.idAsJSON), &id)
-			require.Error(t, err)
-
-			assert.ErrorAs(t, err, &testCase.expectedError)
-		})
-	}
-}
 
 func TestNewMinter(t *testing.T) {
 	t.Parallel()
@@ -358,8 +30,8 @@ func TestNewMinter(t *testing.T) {
 		minter, err := idmint.NewMinter(maxWorkerIDPlusOne)
 		require.Error(t, err)
 
-		var tle *idmint.WorkerIDTooLargeError
-		assert.ErrorAs(t, err, &tle)
+		var widtle *idmint.WorkerIDTooLargeError
+		assert.ErrorAs(t, err, &widtle)
 		assert.Nil(t, minter)
 	})
 }
@@ -385,30 +57,43 @@ func (c *controllableClock) MoveTimeBy(duration time.Duration) {
 func TestMinter_Mint(t *testing.T) {
 	t.Parallel()
 
+	t.Run("zero value minter", func(t *testing.T) {
+		t.Parallel()
+
+		var minter idmint.Minter
+
+		id, err := minter.Mint()
+		require.NoError(t, err)
+		assert.NotZero(t, id)
+	})
+
 	t.Run("id values increase in the same timestamp", func(t *testing.T) {
 		t.Parallel()
 
 		clock := &controllableClock{
 			now: time.Now(),
 		}
-		minter, err := idmint.NewMinter(0, idmint.WithClock(clock))
+		minter, err := idmint.NewMinter(
+			0,
+			idmint.WithClock(clock),
+		)
 		require.NoError(t, err)
 		require.NotNil(t, minter)
 
-		id1, err := minter.Mint("user")
+		id1, err := minter.Mint()
 		require.NoError(t, err)
-		assert.NotNil(t, id1)
+		require.NotZero(t, id1)
 
-		id2, err := minter.Mint("user")
+		id2, err := minter.Mint()
 		require.NoError(t, err)
-		assert.NotNil(t, id2)
+		require.NotZero(t, id2)
 
-		id3, err := minter.Mint("user")
+		id3, err := minter.Mint()
 		require.NoError(t, err)
-		assert.NotNil(t, id3)
+		require.NotZero(t, id3)
 
-		assert.Greater(t, id3.Value(), id2.Value())
-		assert.Greater(t, id2.Value(), id1.Value())
+		assert.Greater(t, id3, id2)
+		assert.Greater(t, id2, id1)
 	})
 
 	t.Run("id values increase as time moves forward", func(t *testing.T) {
@@ -421,46 +106,46 @@ func TestMinter_Mint(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, minter)
 
-		id1, err := minter.Mint("user")
+		id1, err := minter.Mint()
 		require.NoError(t, err)
 		require.NotZero(t, id1)
 
 		clock.MoveTimeBy(time.Millisecond)
 
-		id2, err := minter.Mint("user")
+		id2, err := minter.Mint()
 		require.NoError(t, err)
 		require.NotZero(t, id2)
 
 		clock.MoveTimeBy(time.Millisecond)
 
-		id3, err := minter.Mint("user")
+		id3, err := minter.Mint()
 		require.NoError(t, err)
 		require.NotZero(t, id3)
 
-		assert.Greater(t, id3.Value(), id2.Value())
-		assert.Greater(t, id2.Value(), id1.Value())
+		assert.Greater(t, id3, id2)
+		assert.Greater(t, id2, id1)
 	})
 
 	t.Run("cannot mint when time is before the start of time", func(t *testing.T) {
 		t.Parallel()
 
-		epoch := time.Now()
+		startOfMintingTime := time.Now()
 		clock := &controllableClock{
-			now: epoch.Add(-1 * time.Millisecond),
+			now: startOfMintingTime.Add(-1 * time.Millisecond),
 		}
 		minter, err := idmint.NewMinter(
 			0,
 			idmint.WithClock(clock),
-			idmint.WithEpoch(epoch),
+			idmint.WithStartOfMintingTime(startOfMintingTime),
 		)
 		require.NoError(t, err)
 		require.NotNil(t, minter)
 
-		id, err := minter.Mint("user")
+		id, err := minter.Mint()
 		assert.Error(t, err)
 
-		var bsomte *idmint.CurrentTimeBeforeStartOfMintingTimeError
-		assert.ErrorAs(t, err, &bsomte)
+		var ctbsomte *idmint.CurrentTimeBeforeStartOfMintingTimeError
+		assert.ErrorAs(t, err, &ctbsomte)
 		assert.Zero(t, id)
 	})
 
@@ -469,48 +154,48 @@ func TestMinter_Mint(t *testing.T) {
 
 		const maxTimestampPlusOne = 1 << 42
 
-		epoch := time.Now()
+		startOfMintingTime := time.Now()
 		clock := &controllableClock{
-			now: epoch.Add(maxTimestampPlusOne * time.Millisecond),
+			now: startOfMintingTime.Add(maxTimestampPlusOne * time.Millisecond),
 		}
 		minter, err := idmint.NewMinter(
 			0,
 			idmint.WithClock(clock),
-			idmint.WithEpoch(epoch),
+			idmint.WithStartOfMintingTime(startOfMintingTime),
 		)
 		require.NoError(t, err)
 		require.NotNil(t, minter)
 
-		id, err := minter.Mint("user")
+		id, err := minter.Mint()
 		assert.Error(t, err)
 
-		var aeomte *idmint.CurrentTimeAfterEndOfMintingTimeError
-		assert.ErrorAs(t, err, &aeomte)
+		var ctaeomte *idmint.CurrentTimeAfterEndOfMintingTimeError
+		assert.ErrorAs(t, err, &ctaeomte)
 		assert.Zero(t, id)
 	})
 
 	t.Run("cannot mint when time moves backwards", func(t *testing.T) {
 		t.Parallel()
 
-		epoch := time.Now()
+		startOfMintingTime := time.Now()
 		clock := &controllableClock{
-			now: epoch.Add(1 * time.Millisecond),
+			now: startOfMintingTime.Add(1 * time.Millisecond),
 		}
 		minter, err := idmint.NewMinter(
 			0,
 			idmint.WithClock(clock),
-			idmint.WithEpoch(epoch),
+			idmint.WithStartOfMintingTime(startOfMintingTime),
 		)
 		require.NoError(t, err)
 		require.NotNil(t, minter)
 
-		id1, err := minter.Mint("user")
+		id1, err := minter.Mint()
 		require.NoError(t, err)
-		require.NotNil(t, id1)
+		require.NotZero(t, id1)
 
 		clock.MoveTimeBy(-1 * time.Millisecond)
 
-		id2, err := minter.Mint("user")
+		id2, err := minter.Mint()
 		require.Error(t, err)
 
 		var tmbe *idmint.TimeMovedBackwardsError
@@ -524,17 +209,20 @@ func TestMinter_Mint(t *testing.T) {
 		clock := &controllableClock{
 			now: time.Now(),
 		}
-		minter, err := idmint.NewMinter(0, idmint.WithClock(clock))
+		minter, err := idmint.NewMinter(
+			0,
+			idmint.WithClock(clock),
+		)
 		require.NoError(t, err)
 		require.NotNil(t, minter)
 
 		for range 1 << 12 {
-			id, err := minter.Mint("user")
+			id, err := minter.Mint()
 			require.NoError(t, err)
-			require.NotNil(t, id)
+			require.NotZero(t, id)
 		}
 
-		id, err := minter.Mint("user")
+		id, err := minter.Mint()
 		require.Error(t, err)
 
 		var sntle *idmint.SequenceNumberTooLargeError
@@ -547,17 +235,20 @@ func BenchmarkMinter_Mint(b *testing.B) {
 	b.ReportAllocs()
 
 	now := time.Now()
-	minter, err := idmint.NewMinter(0, idmint.WithEpoch(now))
+	minter, err := idmint.NewMinter(
+		0,
+		idmint.WithStartOfMintingTime(now),
+	)
 	require.NoError(b, err)
 	require.NotNil(b, minter)
 
-	id, err := minter.Mint("user")
+	id, err := minter.Mint()
 	require.NoError(b, err)
 	require.NotZero(b, id)
 
 	b.ResetTimer()
 	for b.Loop() {
-		id, _ = minter.Mint("user")
+		id, _ = minter.Mint()
 	}
 
 	runtime.KeepAlive(id)
